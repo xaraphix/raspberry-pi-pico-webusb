@@ -1,4 +1,4 @@
-import { debounce, throttle } from 'lodash';
+import { throttle } from 'lodash';
 import {
 	chunkSizeInBytes,
 	maxSpeed,

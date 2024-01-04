@@ -17,6 +17,8 @@ let accBufferVal: AudioBuffer | null;
 let audioContextVal: AudioContext | null;
 let queryTimeInMsVal: number = 0;
 let chunkSizeVal: number = 0;
+let nextStartTime = 0;
+let currBuffIdx = 0;
 let readDataThrottled = throttle((chunkSize: number, queryTime: number) => {
 	if (chunkSize && queryTime) {
 		port.readData(chunkSize, queryTime);
@@ -67,9 +69,9 @@ const initDevice = () => {
 		.then(() => {
 			isDeviceConnected.set(true);
 			port.onReceive = (data) => {
-				// if (!data) return;
-				// addToBuffers(data);
-				// playAudio();
+				if (!data) return;
+				addToBuffers(data);
+				playAudio();
 			};
 			port.onReceiveError = (error) => {
 				console.error('Error on receiving data from PICO Audio interface', error);
@@ -97,23 +99,15 @@ const addToBuffers = (audioData: DataView) => {
 	currWriteIdx = currWriteIdx % audioBuffers.length;
 };
 
-let nextStartTime = 0;
-let currBuffIdx = 0;
-
 function playAudio() {
 	const source = (audioContextVal as AudioContext).createBufferSource();
 	source.buffer = audioBuffers[currBuffIdx];
-	// Connect the AudioBufferSourceNode to the AudioContext's destination (speakers)
 	source.connect((audioContextVal as AudioContext).destination);
 
-	let x = (audioContextVal as AudioContext).currentTime;
-	// Calculate the start time for the next buffer based on the current buffer's duration
 	nextStartTime += source.buffer.duration;
 
-	// Schedule the next buffer playback
 	source.start(nextStartTime);
 
-	// Increment the current buffer index for the next iteration
 	currBuffIdx += 1;
 	currBuffIdx = currBuffIdx % audioBuffers.length;
 }

@@ -9,6 +9,9 @@ export const chunkSizeInBytes = writable<number>(1024 * 12);
 export const queryTimeInMs = writable<number>(10);
 export const maxSpeed = writable<Maxspeed | null>(null);
 export const chunkSizes = [
+	0.5 * 1024,
+	0.6 * 1024,
+	0.7 * 1024,
 	0.8 * 1024,
 	0.9 * 1024,
 	1 * 1024,

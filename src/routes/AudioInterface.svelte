@@ -1,4 +1,4 @@
-script lang="ts">
+<script lang="ts">
 	import { onMount } from 'svelte';
 	import TransferSpeed from '../components/TransferSpeed.svelte';
 	import {
@@ -9,12 +9,8 @@ script lang="ts">
 		maxSpeed,
 		chunkSizes,
 		queryTimes,
-		performanceData,
-		speedInKBps
+		performanceData
 	} from '../stores/store';
-	import Layout from './+layout.svelte';
-	import Page from './+page.svelte';
-	import { disconnectAudioInterface } from '../utils/Audio';
 
 	let maxSpeedVal: Maxspeed | null;
 	let performanceDataVal: Record<number, Record<number, PerformanceCell>> | null;
@@ -42,7 +38,6 @@ script lang="ts">
 
 		const runWithDelay = () => {
 			if (currentIndex >= chunkSizes.length * queryTimes.length) {
-				// disconnectAudioInterface();
 				return;
 			}
 
@@ -76,27 +71,27 @@ script lang="ts">
 >
 	<span class="text-xl font-bold text-gray-400 mt-16">RaspberryPi PICO WebUSB Benchmark</span>
 	<TransferSpeed />
-	<div class="shrink-0 grow flex flex-row w-full relative items-center justify-center px-48">
+	<div class="grow flex flex-row w-full relative items-center justify-center px-48">
 		<div
 			class="
-				grid grid-cols-8 grow shrink-0
+				grid grid-cols-11 overflow-auto grow
 			"
 		>
 			<div class="flex flex-col grow h-12 items-center justify-center">
-				<span class="font-bold align-middle text-gray-600">QueryTime / ChunkSize</span>
+				<span class="w-32 font-bold align-middle text-gray-600">QueryTime / ChunkSize</span>
 			</div>
 			{#each chunkSizes as chunkSize, j (j)}
 				<div class="flex flex-col grow h-12 items-center justify-center">
-					<span class="font-bold text-center align-middle text-gray-600"
-						>{chunkSize < 1024 ? (chunkSize/1.0).toFixed(0) : (chunkSize / 1024.0).toFixed(0)}
+					<span class="w-12 font-bold text-center align-middle text-gray-600"
+						>{chunkSize < 1024 ? (chunkSize / 1.0).toFixed(0) : (chunkSize / 1024.0).toFixed(0)}
 						{chunkSize < 1024 ? 'B' : 'KB'}</span
 					>
 				</div>
 			{/each}
 			{#each queryTimes as queryTime, i (i)}
-				<span class="font-bold text-center align-middle text-gray-600">{queryTime} ms</span>
+				<span class="w-12 font-bold text-center align-middle text-gray-600">{queryTime} ms</span>
 				{#each chunkSizes as chunkSize, j (j)}
-					{#if performanceDataVal && performanceDataVal[chunkSize][queryTime].maxSpeed}
+					{#if performanceDataVal && maxSpeedVal && performanceDataVal[chunkSize][queryTime].maxSpeed}
 						<div
 							class:bg-yellow-100={performanceDataVal[chunkSize][queryTime].started &&
 								!performanceDataVal[chunkSize][queryTime].completed}
@@ -133,13 +128,13 @@ script lang="ts">
 								0.1 * maxSpeedVal.speed}
 							class="flex flex-col grow h-12 items-center justify-center"
 						>
-							<span class="font-bold text-center"
+							<span class="fontw-12 -bold text-center"
 								>{performanceDataVal[chunkSize][queryTime].maxSpeed.toFixed(2)} KB/s</span
 							>
 						</div>
 					{:else}
 						<div class="flex flex-col grow h-12 items-center justify-center">
-							<span class="font-bold text-center text-gray-600">-</span>
+							<span class="w-12 font-bold text-center text-gray-600">-</span>
 						</div>
 					{/if}
 				{/each}
