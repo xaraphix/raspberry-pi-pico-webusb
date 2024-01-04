@@ -1,87 +1,149 @@
-<script lang="ts">
+script lang="ts">
 	import { onMount } from 'svelte';
-	import Serial from '../serial';
-	let serial: Serial = new Serial(<USBDevice>{});
-	let port: Serial = <Serial>{};
+	import TransferSpeed from '../components/TransferSpeed.svelte';
+	import {
+		audioContext,
+		accumulatedBuffer,
+		chunkSizeInBytes,
+		queryTimeInMs,
+		maxSpeed,
+		chunkSizes,
+		queryTimes,
+		performanceData,
+		speedInKBps
+	} from '../stores/store';
+	import Layout from './+layout.svelte';
+	import Page from './+page.svelte';
+	import { disconnectAudioInterface } from '../utils/Audio';
 
-	const connectToAudioInterface = () => {
-		serial
-			.requestPort()
-			.then((selectedPort) => {
-				port = selectedPort;
-				initDevice();
-			})
-			.catch((error) => console.error('Could not connect to PICO Audio interface', error));
-	};
+	let maxSpeedVal: Maxspeed | null;
+	let performanceDataVal: Record<number, Record<number, PerformanceCell>> | null;
 
-	let startedPlaying = false;
-	let startCounts = 0;
-	const initDevice = () => {
-		port
-			.connect()
-			.then(() => {
-				port.onReceive = (data) => {
-					addToBuffers(data);
-					playAudio();
-				};
-				port.onReceiveError = (error) => {
-					console.error('Error on receiving data from PICO Audio interface', error);
-				};
-				setInterval(() => port.readData(), 10);
-			})
-			.catch((error) => console.error('Could not connect to PICO Audio interface', error));
-	};
-
-	let audioBuffers = Array(10000);
-	let currWriteIdx = 0;
-	const addToBuffers = (audioData: DataView) => {
-		const chunkSize = audioData.byteLength;
-
-		if (!accumulatedBuffer) {
-			accumulatedBuffer = audioContext.createBuffer(1, chunkSize, 44100);
-		}
-
-		const channelData = accumulatedBuffer.getChannelData(0);
-
-		for (let i = 0; i < chunkSize; ++i) {
-			channelData[i] = audioData.getInt8(i) / 1280;
-		}
-
-		audioBuffers[currWriteIdx] = accumulatedBuffer;
-		currWriteIdx += 1;
-		currWriteIdx = currWriteIdx % audioBuffers.length;
-	};
-
-	let audioContext = null;
-
-	let accumulatedBuffer = null;
-	onMount(() => {
-		audioContext = new (window.AudioContext || window.webkitAudioContext)();
-
-		accumulatedBuffer = null;
+	maxSpeed.subscribe((v) => {
+		maxSpeedVal = v;
 	});
-	let nextStartTime = 0;
-	let currBuffIdx = 0;
 
-	function playAudio() {
-		const source = audioContext.createBufferSource();
-		source.buffer = audioBuffers[currBuffIdx];
-		// Connect the AudioBufferSourceNode to the AudioContext's destination (speakers)
-		source.connect(audioContext.destination);
+	performanceData.subscribe((v) => {
+		performanceDataVal = v;
+	});
 
-		let x = audioContext.currentTime;
-		// Calculate the start time for the next buffer based on the current buffer's duration
-		nextStartTime += source.buffer.duration;
+	onMount(() => {
+		$audioContext = new (window.AudioContext || window.webkitAudioContext)();
+		$accumulatedBuffer = null;
 
-		// Schedule the next buffer playback
-		source.start(nextStartTime);
+		let currentIndex = 0;
+		let prevChunkSize = 0;
+		let prevQueryTime = 0;
 
-		// Increment the current buffer index for the next iteration
-		currBuffIdx += 1;
-		currBuffIdx = currBuffIdx % audioBuffers.length;
-	}
+		const executeFunction = (chunkSize: number, queryTime: number) => {
+			chunkSizeInBytes.set(chunkSize);
+			queryTimeInMs.set(queryTime);
+		};
+
+		const runWithDelay = () => {
+			if (currentIndex >= chunkSizes.length * queryTimes.length) {
+				// disconnectAudioInterface();
+				return;
+			}
+
+			const currentChunkSize = chunkSizes[Math.floor(currentIndex / queryTimes.length)];
+			const currentQueryTime = queryTimes[currentIndex % queryTimes.length];
+
+			if (prevQueryTime !== 0 && prevChunkSize !== 0) {
+				(performanceDataVal as Record<number, Record<number, PerformanceCell>>)[prevChunkSize][
+					prevQueryTime
+				].completed = true;
+			}
+			prevChunkSize = currentChunkSize;
+			prevQueryTime = currentQueryTime;
+			executeFunction(currentChunkSize, currentQueryTime);
+
+			currentIndex++;
+
+			setTimeout(() => {
+				chunkSizeInBytes.set(0);
+				queryTimeInMs.set(0);
+			}, 6000);
+			setTimeout(runWithDelay, 8000);
+		};
+
+		setTimeout(runWithDelay, 1000);
+	});
 </script>
 
-<div>
-	<button on:click={() => connectToAudioInterface()}> Connect </button>
+<div
+	class="h-full w-full flex flex-col relative items-center justify-between space-x-12 overflow-hidden"
+>
+	<span class="text-xl font-bold text-gray-400 mt-16">RaspberryPi PICO WebUSB Benchmark</span>
+	<TransferSpeed />
+	<div class="shrink-0 grow flex flex-row w-full relative items-center justify-center px-48">
+		<div
+			class="
+				grid grid-cols-8 grow shrink-0
+			"
+		>
+			<div class="flex flex-col grow h-12 items-center justify-center">
+				<span class="font-bold align-middle text-gray-600">QueryTime / ChunkSize</span>
+			</div>
+			{#each chunkSizes as chunkSize, j (j)}
+				<div class="flex flex-col grow h-12 items-center justify-center">
+					<span class="font-bold text-center align-middle text-gray-600"
+						>{chunkSize < 1024 ? (chunkSize/1.0).toFixed(0) : (chunkSize / 1024.0).toFixed(0)}
+						{chunkSize < 1024 ? 'B' : 'KB'}</span
+					>
+				</div>
+			{/each}
+			{#each queryTimes as queryTime, i (i)}
+				<span class="font-bold text-center align-middle text-gray-600">{queryTime} ms</span>
+				{#each chunkSizes as chunkSize, j (j)}
+					{#if performanceDataVal && performanceDataVal[chunkSize][queryTime].maxSpeed}
+						<div
+							class:bg-yellow-100={performanceDataVal[chunkSize][queryTime].started &&
+								!performanceDataVal[chunkSize][queryTime].completed}
+							class:bg-green-800={performanceDataVal[chunkSize][queryTime].maxSpeed ===
+								maxSpeedVal.speed}
+							class:bg-green-600={performanceDataVal[chunkSize][queryTime].maxSpeed <
+								maxSpeedVal.speed &&
+								performanceDataVal[chunkSize][queryTime].maxSpeed >= 0.9 * maxSpeedVal.speed}
+							class:bg-yellow-500={performanceDataVal[chunkSize][queryTime].maxSpeed <
+								0.9 * maxSpeedVal.speed &&
+								performanceDataVal[chunkSize][queryTime].maxSpeed >= 0.8 * maxSpeedVal.speed}
+							class:bg-orange-500={performanceDataVal[chunkSize][queryTime].maxSpeed <
+								0.8 * maxSpeedVal.speed &&
+								performanceDataVal[chunkSize][queryTime].maxSpeed >= 0.7 * maxSpeedVal.speed}
+							class:bg-orange-600={performanceDataVal[chunkSize][queryTime].maxSpeed <
+								0.7 * maxSpeedVal.speed &&
+								performanceDataVal[chunkSize][queryTime].maxSpeed >= 0.6 * maxSpeedVal.speed}
+							class:bg-orange-700={performanceDataVal[chunkSize][queryTime].maxSpeed <
+								0.6 * maxSpeedVal.speed &&
+								performanceDataVal[chunkSize][queryTime].maxSpeed >= 0.5 * maxSpeedVal.speed}
+							class:bg-orange-800={performanceDataVal[chunkSize][queryTime].maxSpeed <
+								0.5 * maxSpeedVal.speed &&
+								performanceDataVal[chunkSize][queryTime].maxSpeed >= 0.4 * maxSpeedVal.speed}
+							class:bg-red-600={performanceDataVal[chunkSize][queryTime].maxSpeed <
+								0.4 * maxSpeedVal.speed &&
+								performanceDataVal[chunkSize][queryTime].maxSpeed >= 0.3 * maxSpeedVal.speed}
+							class:bg-red-700={performanceDataVal[chunkSize][queryTime].maxSpeed <
+								0.3 * maxSpeedVal.speed &&
+								performanceDataVal[chunkSize][queryTime].maxSpeed >= 0.2 * maxSpeedVal.speed}
+							class:bg-red-800={performanceDataVal[chunkSize][queryTime].maxSpeed <
+								0.2 * maxSpeedVal.speed &&
+								performanceDataVal[chunkSize][queryTime].maxSpeed >= 0.1 * maxSpeedVal.speed}
+							class:bg-red-900={performanceDataVal[chunkSize][queryTime].maxSpeed <
+								0.1 * maxSpeedVal.speed}
+							class="flex flex-col grow h-12 items-center justify-center"
+						>
+							<span class="font-bold text-center"
+								>{performanceDataVal[chunkSize][queryTime].maxSpeed.toFixed(2)} KB/s</span
+							>
+						</div>
+					{:else}
+						<div class="flex flex-col grow h-12 items-center justify-center">
+							<span class="font-bold text-center text-gray-600">-</span>
+						</div>
+					{/if}
+				{/each}
+			{/each}
+		</div>
+	</div>
 </div>

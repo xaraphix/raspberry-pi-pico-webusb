@@ -4,7 +4,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CXX_STANDARD 14)
 include(pico_sdk_import.cmake)
 
-include(${PICO_SDK_PATH}/lib/tinyusb/hw/bsp/family_support.cmake)
+include(${PICO_SDK_PATH}/lib/tinyusb2/hw/bsp/family_support.cmake)
 project(pico_webusb_audio_project)
 
 family_initialize_project(pico_webusb_audio ${CMAKE_CURRENT_LIST_DIR})
